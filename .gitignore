@@ -1,0 +1,5 @@
+obj/*
+.clangd
+build.sh
+CMakeLists.txt
+makefile
