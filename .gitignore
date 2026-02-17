@@ -3,3 +3,5 @@ obj/*
 build.sh
 CMakeLists.txt
 makefile
+*.so
+*.dll
