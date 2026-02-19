@@ -2,6 +2,7 @@
 #include <frame.hpp>
 #include <nalt.hpp>
 
+#include <charconv>
 #include <optional>
 
 static ssize_t idaapi cb_handler(void *ud, hexrays_event_t event, va_list va);
@@ -62,6 +63,36 @@ static qstring make_addr(int index) {
 	funcpattern[1] = COLOR_ADDR;
 	qsnprintf(&funcpattern[2], 17, "%016X", index);
 	return qstring(funcpattern, sizeof(funcpattern) - 1);
+}
+
+const size_t addrtag_len() {
+	return 2 + 16;
+}
+
+static void skip_cast(qstring &line, size_t& cast_startoffs, std::optional<std::reference_wrapper<qstring>> out_prefix_expr = std::nullopt, std::optional<std::reference_wrapper<size_t>> out_cast_expr_len = std::nullopt) {
+	const qstring visible_cast_begin = make_ctag_str(COLOR_SYMBOL, "(") + make_ctag(COLOR_ON, COLOR_HIDNAME);
+	const qstring visible_cast_end = make_ctag(COLOR_OFF, COLOR_HIDNAME) + make_ctag_str(COLOR_SYMBOL, ")");
+	
+	// grab the ctree addr of the cast first
+	qstring cast_expr = line.substr(cast_startoffs, cast_startoffs + addrtag_len());
+	
+	size_t visible_cast_startidx = cast_startoffs + addrtag_len();
+	
+	// the user might disable casts, in which case the visible (type) part of (type)var is not shown
+	// if it is visible, we need to include the (type) in the cast expression for later
+	if (line.find(visible_cast_begin, visible_cast_startidx) == visible_cast_startidx) {
+		// so we show (type)var->Func(...)
+		size_t cast_endidx = line.find(visible_cast_end, visible_cast_startidx) + visible_cast_end.length();
+		cast_expr += line.substr(visible_cast_startidx, cast_endidx);
+	}
+	
+	// advance farg to the var part of (type)var
+	cast_startoffs += cast_expr.length();
+	if (out_prefix_expr)
+		out_prefix_expr->get() += cast_expr;
+	
+	if (out_cast_expr_len)
+		out_cast_expr_len->get() = cast_expr.length();
 }
 
 static int callback(cfunc_t *func) {
@@ -325,27 +356,10 @@ static int callback(cfunc_t *func) {
 			}
 			
 			// if farg is a cast, we need to undo the cast, and grab the cast expression
-			if (lc.first_arg->op == cot_cast)
-			{
-				const qstring visible_cast_begin = make_ctag_str(COLOR_SYMBOL, "(") + make_ctag(COLOR_ON, COLOR_HIDNAME);
-				const qstring visible_cast_end = make_ctag(COLOR_OFF, COLOR_HIDNAME) + make_ctag_str(COLOR_SYMBOL, ")");
-				
-				// grab the ctree addr of the cast first
-				qstring cast_expr = farg_line.substr(farg_start, farg_start + farg_ctreeaddr.length());
-				
-				size_t visible_cast_startidx = farg_start + farg_ctreeaddr.length();
-				
-				// the user might disable casts, in which case the visible (type) part of (type)var is not shown
-				// if it is visible, we need to include the (type) in the cast expression for later
-				if (farg_line.find(visible_cast_begin, visible_cast_startidx) == visible_cast_startidx) {
-					// so we show (type)var->Func(...)
-					size_t cast_endidx = farg_line.find(visible_cast_end, visible_cast_startidx) + visible_cast_end.length();
-					cast_expr += farg_line.substr(visible_cast_startidx, cast_endidx);
-				}
-				
-				// advance farg to the var part of (type)var
-				farg_start += cast_expr.length();
-				prefix_expr += cast_expr;
+			if (lc.first_arg->op == cot_cast) {
+				msg("%08X before normal cast skip: %s\n", lc.call->ea, farg_line.substr(farg_start, farg_start + 32).c_str());
+				skip_cast(farg_line, farg_start, prefix_expr);
+				msg("%08X after normal cast skip: %s\n", lc.call->ea, farg_line.substr(farg_start, farg_start + 32).c_str());
 			}
 			
 			// NOTE: not for multiline
@@ -367,6 +381,57 @@ static int callback(cfunc_t *func) {
 						make_ctag_str(COLOR_SYMBOL, ")") /* otherwise just look for the ending parenthesis */;
 	
 				farg_end = farg_line.find(arg_sep, farg_start);
+				
+				// we have additional parenthesis at the beginning of farg, in cases like when farg is complex
+				// enough to require the parentheses, e.g. (x + 4).Something();
+				// mostly occurs in cases of stack reuse and/or weird casts
+
+				const qstring paren_begin = make_ctag_str(COLOR_SYMBOL, "(");
+				const qstring paren_end = make_ctag_str(COLOR_SYMBOL, ")");
+
+				if (farg_line.find(paren_begin, farg_start) == farg_start) {
+					bool ok = true;
+					size_t paren_find_fargtmp_idx = farg_start;
+					
+					bool next_is_cast = false;
+					while (1) {
+						// cast parenthesis   = addr tag (cot_cast) + "("
+						// normal parenthesis = just "(" without anything in front
+						if (farg_line.find(paren_begin, paren_find_fargtmp_idx) == paren_find_fargtmp_idx) {
+							paren_find_fargtmp_idx += paren_begin.length();
+							continue;
+						}
+					
+						if (farg_line.find(make_addrtag(), paren_find_fargtmp_idx) == paren_find_fargtmp_idx && farg_line.find(paren_begin, paren_find_fargtmp_idx + addrtag_len()) == paren_find_fargtmp_idx + addrtag_len()) {
+							qstring addr = farg_line.substr(paren_find_fargtmp_idx + 2, paren_find_fargtmp_idx + addrtag_len());
+							size_t ctree_idx { 0 };
+							auto res = std::from_chars<size_t>(addr.begin(), addr.end(), ctree_idx, 16);
+							if (res.ec != std::errc() || ctree_idx >= func->treeitems.size()) {
+								std::errc a;
+								info("%08X: could not reformat parenthesis expression as call argument: %d %ld %ld\n", lc.call->ea, res.ec, ctree_idx, func->treeitems.size());
+								ok = false;
+								break;
+							}
+							citem_t *cur_part = func->treeitems[ctree_idx];
+							if (cur_part->op == cot_cast) {
+								skip_cast(farg_line, paren_find_fargtmp_idx);
+							} else {
+								paren_find_fargtmp_idx += paren_begin.length();
+							}
+							continue;
+						}
+						
+						// if we end up here, we found neither a normal nor cast parenthesis
+						// paren_find_fargtmp_idx points to the innermost char after all possible parens
+						// e.g. for `((int)X` it would point to X
+						// at which case, all we have to do is seek to the end of the *first* type of parenthesis,
+						// starting at paren_find_fargtmp_idx
+						if (ok) {
+							farg_end = farg_line.find(paren_end, paren_find_fargtmp_idx) + paren_end.length();
+						}
+						break;
+					}
+				}
 				
 				if (!lc.second_arg && farg_line.find("ADJ", farg_start) != qstring::npos) {
 					// because ADJ has its own closing parenthesis,
