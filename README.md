@@ -23,12 +23,15 @@ The plugin automatically enables reformatting for supported calls, but it is pos
 - Retaining navigation and cross-reference features for the function and the call object (`this`), e.g. it is still possible to navigate to `MyNamespace::MyClass::MyFunction`, as well as to cross-reference it with other calls in the current and other functions in the program.
 - Usage of correct call operator (`->` for pointers, `.` otherwise) based on the type of `this`.
 - Reformatting decision based on (demangled) function name and call object (`this`) type, e.g. `this` must be `MyNamespace::MyClass` (or a pointer to it) in order to reformat a call to `MyNamespace::MyClass::MyFunction`.
-- Support for inheritance, e.g. in cases where `class MyParent : MyBase` and a `MyParent` instance is used to call a non-virtual function that is part of `MyBase`. (proper struct definitions are required in order to detect inheritance).
-- Detection of casts, in bad cases of stack reuse, by rewriting the expression to still look somewhat readable
+- Support for inheritance (and multi level deep inheritance), e.g. in cases where `class MyParent : MyBase` and a `MyParent` instance is used to call a non-virtual function that is part of `MyBase`. (proper struct definitions are required in order to detect inheritance).
+- Detection of casts, whether they are shown or not, even in bad cases of stack reuse, by rewriting the expression to still look somewhat readable
+- Detection of the first array element (`array[0]`) as `this` and reformatting from `a::b::func(&array, ...)` to `array[0].func(...)` or `array[0]->func(...)`
 - Support for multi-line function call expressions, as is the case when there are many parameters / parameters with long labels.
+- Support for basic *function* templates in demangled function names, currently only `a::b::func<...>(...)` can be reformatted to `obj.func<...>(...);`
 
 ## TODO:
-- Add support for struct returns (return by value), as in these cases, `this` becomes the second argument
+- Add support for struct returns (by-value), as in these cases, `this` becomes the second parameter
+- Rewrite vftable calls to remove extraneous `this` from call expressions like `this->MyVcall(this, ...)` to `this->MyVcall(...)`
 
 ## Installation
 This plugin has been designed for and tested with IDA Pro version 9.2.250908. Older versions are unsupported and may not work.
