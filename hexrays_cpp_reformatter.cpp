@@ -258,6 +258,14 @@ static int callback(cfunc_t *func) {
 			size_t funcname_end = curline.find(make_ctag(COLOR_OFF, COLOR_DEMNAME), funcname_start);
 			// full function name, should be namespaces::class::function
 			qstring full_funcname = curline.substr(funcname_start, funcname_end);
+			qstring post_part;
+			
+			// detect function templates, currently only nmsp::cls::func<...>(...) is supported, to reformat into func<...>(...)
+			size_t anglebracket_begin = full_funcname.find("<");
+			if (anglebracket_begin != qstring::npos) {
+				post_part = full_funcname.substr(anglebracket_begin);
+				full_funcname.remove(anglebracket_begin, full_funcname.length() - anglebracket_begin + 1);
+			}
 			
 			qvector<qstring> splits;
 			full_funcname.split(&splits, "::");
@@ -294,18 +302,36 @@ static int callback(cfunc_t *func) {
 			// is a derivative class of the wanted class.
 			// meaning we need to know what base classes there are for it
 			bool farg_type_is_matching_derivative = false;
+			bool has_inner = false;
 			if (actual_farg_type.is_cpp_struct()) {
 				// requirement is __cppobj because only those can be derivatives
 				udt_type_data_t udt_typedata;
 				actual_farg_type.get_udt_details(&udt_typedata);
-				for (auto &udt : udt_typedata) {
-					if (udt.is_baseclass()) {
-						qstring t;
-						udt.type.print(&t);
-						if (t == wanted_farg_type) {
-							farg_type_is_matching_derivative = true;
-							break;
+				// it's possible for there to be multiple levels of inheritance, which needs to be accounted for
+				while (1) {
+					for (auto &udt : udt_typedata) {
+						if (udt.is_baseclass()) {
+							qstring t;
+							udt.type.print(&t);
+							if (t == wanted_farg_type) {
+								farg_type_is_matching_derivative = true;
+								break;
+							}
+							
+							udt_type_data_t inner_typedata;
+							udt.type.get_udt_details(&inner_typedata);
+							if (inner_typedata.size() && inner_typedata[0].is_baseclass()) {
+								udt_typedata = inner_typedata;
+								has_inner = true;
+								break;
+							}
 						}
+					}
+					
+					if (!has_inner) {
+						break;
+					} else {
+						has_inner = false;
 					}
 				}
 			}
@@ -315,6 +341,8 @@ static int callback(cfunc_t *func) {
 				// we exit.
 				break;
 			}
+			
+			actual_funcname += post_part;
 					
 		// -- end area that doesn't care about multiline --
 
@@ -357,9 +385,7 @@ static int callback(cfunc_t *func) {
 			
 			// if farg is a cast, we need to undo the cast, and grab the cast expression
 			if (lc.first_arg->op == cot_cast) {
-				msg("%08X before normal cast skip: %s\n", lc.call->ea, farg_line.substr(farg_start, farg_start + 32).c_str());
 				skip_cast(farg_line, farg_start, prefix_expr);
-				msg("%08X after normal cast skip: %s\n", lc.call->ea, farg_line.substr(farg_start, farg_start + 32).c_str());
 			}
 			
 			// NOTE: not for multiline
