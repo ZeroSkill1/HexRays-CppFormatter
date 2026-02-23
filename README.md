@@ -42,3 +42,27 @@ Simply copy the .so or .dll file (depending on your OS) into `plugins` in your I
 
 ## Building
 Use the [IDA C++ SDK](https://github.com/HexRaysSA/ida-sdk) to build the plugin.
+
+## More code examples
+
+Array element as `this`:
+
+![Array element as call object](./images/extra_example0.png)
+
+Deeper inheritance chain, and function templates.
+
+The inheritance chain in this case is `frd::FriendProtocol` -> `NEX::ClientProtocol` -> `NEX::Protocol`.
+
+![Deeper inheritance chain and function templates](./images/extra_example1.png)
+
+Cast expression due to stack reuse, properly wrapped in parentheses to preserve syntax.
+
+![Cast expression in a case of stack reuse](./images/extra_example2.png)
+
+Multi-line function reformatting due to large number of parameters.
+
+![Multi-line function reformatting](./images/extra_example3.png)
+
+A case where the first element of an array is the call object, properly reformatted to `array[0]`.
+
+![First element of array as call object, reformatted to array element index 0](./images/extra_example4.png)
