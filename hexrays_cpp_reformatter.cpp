@@ -431,9 +431,8 @@ static int callback(cfunc_t *func) {
 						if (farg_line.find(make_addrtag(), paren_find_fargtmp_idx) == paren_find_fargtmp_idx && farg_line.find(paren_begin, paren_find_fargtmp_idx + addrtag_len()) == paren_find_fargtmp_idx + addrtag_len()) {
 							qstring addr = farg_line.substr(paren_find_fargtmp_idx + 2, paren_find_fargtmp_idx + addrtag_len());
 							size_t ctree_idx { 0 };
-							auto res = std::from_chars<size_t>(addr.begin(), addr.end(), ctree_idx, 16);
+							auto res = std::from_chars(addr.begin(), addr.end(), ctree_idx, 16);
 							if (res.ec != std::errc() || ctree_idx >= func->treeitems.size()) {
-								std::errc a;
 								info("%08X: could not reformat parenthesis expression as call argument: %d %ld %ld\n", lc.call->ea, res.ec, ctree_idx, func->treeitems.size());
 								ok = false;
 								break;

@@ -34,7 +34,7 @@ The plugin automatically enables reformatting for supported calls, but it is pos
 - Rewrite vftable calls to remove extraneous `this` from call expressions like `this->MyVcall(this, ...)` to `this->MyVcall(...)`
 
 ## Installation
-This plugin has been designed for and tested with IDA Pro version 9.2.250908. Older versions are unsupported and may not work.
+This plugin is currently developed and tested with IDA Pro version 9.3.260421. Older versions are unsupported and may not work.
 
 Builds are provided for Linux (x64) and Windows (x64) in the Releases section.
 
