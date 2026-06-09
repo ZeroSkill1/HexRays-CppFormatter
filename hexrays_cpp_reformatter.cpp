@@ -18,7 +18,7 @@ struct plugin_ctx_t : public plugmod_t
 	virtual bool idaapi run(size_t) override;
 	void install_cb();
 	void uninstall_cb();
-	
+
 	bool registered_cb = false;
 };
 
@@ -65,19 +65,19 @@ static qstring make_addr(int index) {
 	return qstring(funcpattern, sizeof(funcpattern) - 1);
 }
 
-const size_t addrtag_len() {
+constexpr size_t addrtag_len() {
 	return 2 + 16;
 }
 
 static void skip_cast(qstring &line, size_t& cast_startoffs, std::optional<std::reference_wrapper<qstring>> out_prefix_expr = std::nullopt, std::optional<std::reference_wrapper<size_t>> out_cast_expr_len = std::nullopt) {
 	const qstring visible_cast_begin = make_ctag_str(COLOR_SYMBOL, "(") + make_ctag(COLOR_ON, COLOR_HIDNAME);
 	const qstring visible_cast_end = make_ctag(COLOR_OFF, COLOR_HIDNAME) + make_ctag_str(COLOR_SYMBOL, ")");
-	
+
 	// grab the ctree addr of the cast first
 	qstring cast_expr = line.substr(cast_startoffs, cast_startoffs + addrtag_len());
-	
+
 	size_t visible_cast_startidx = cast_startoffs + addrtag_len();
-	
+
 	// the user might disable casts, in which case the visible (type) part of (type)var is not shown
 	// if it is visible, we need to include the (type) in the cast expression for later
 	if (line.find(visible_cast_begin, visible_cast_startidx) == visible_cast_startidx) {
@@ -85,12 +85,12 @@ static void skip_cast(qstring &line, size_t& cast_startoffs, std::optional<std::
 		size_t cast_endidx = line.find(visible_cast_end, visible_cast_startidx) + visible_cast_end.length();
 		cast_expr += line.substr(visible_cast_startidx, cast_endidx);
 	}
-	
+
 	// advance farg to the var part of (type)var
 	cast_startoffs += cast_expr.length();
 	if (out_prefix_expr)
 		out_prefix_expr->get() += cast_expr;
-	
+
 	if (out_cast_expr_len)
 		out_cast_expr_len->get() = cast_expr.length();
 }
@@ -100,28 +100,28 @@ static int callback(cfunc_t *func) {
 	{
 	public:
 		call_finder_t() : ctree_visitor_t(CV_FAST) {}
-		
+
 		qvector<call_t> nonvirtual_calls;
-		
+
 		qvector<call_t> export_nonvirtual_calls() {
 			return std::move(nonvirtual_calls);
 		}
-		
+
 		int idaapi visit_expr(cexpr_t *expr) override {
 			if (expr->op != cot_call)
 				return 0;
-			
+
 			cexpr_t *callobj = expr->x;
 			carglist_t *args = expr->a;
-			
+
 			if (callobj->op == cot_obj) {
-				
+
 				call_t call;
 				call.call = expr;
 				call.callobj = callobj;
 				call.first_arg = args->size() ? &args->at(0) : nullptr;
 				call.second_arg = args->size() >= 2 ? &args->at(1) : nullptr;
-				
+
 				nonvirtual_calls.push_back(call);
 			} else if (callobj->op == cot_memref || callobj->op == cot_memptr) {
 				//if (!args->size())
@@ -143,16 +143,16 @@ static int callback(cfunc_t *func) {
 			return 0;
 		}
 	};
-	
+
 	call_finder_t finder;
-	
+
 	finder.apply_to(&func->body, NULL);
 	qvector<call_t> nonvirtual_calls = finder.export_nonvirtual_calls();
-	
+
 	if (!nonvirtual_calls.size()) return 0;
-	
+
 	/*
-     * for non multiline: 
+     * for non multiline:
      * 1. func ctree, func name, funcexpr ctree, funcexpr "(", farg ctree, farg label, [either ) or ,]
      * builds:
      * funcname(farg)     OR  funcname(farg, ...)
@@ -172,7 +172,7 @@ static int callback(cfunc_t *func) {
      *     (other stuff)
      * multiline should be easier to handle; we can be deterministic about a lot of things
 	 */
-	
+
 	for (auto& call : nonvirtual_calls) {
 		call.funcexpr_ctidx = func->treeitems.index(call.call);
 		call.func_ctidx = func->treeitems.index(call.callobj);
@@ -190,7 +190,7 @@ static int callback(cfunc_t *func) {
 		//	call.farg_ctidx,
 		//	call.second_arg_ctidx);
 	}
-	
+
 	//for (auto& ui : func->sv) {
 	//	auto& l = ui.line;
 	//	//msg("%s\n", l.c_str());
@@ -200,7 +200,7 @@ static int callback(cfunc_t *func) {
 	//	msg("%02X", 0xA);
 	//}
 	//msg("\n");
-	
+
 	// just do the last call for now
 	for (auto &lc : nonvirtual_calls)
 	{
@@ -209,16 +209,16 @@ static int callback(cfunc_t *func) {
 			// if it's not a call involving an object, we exit
 			continue;
 		}
-	
+
 		for (size_t lineidx = 0; lineidx < func->sv.size(); lineidx++)
 		{
 			auto& curline = func->sv[lineidx].line;
 			qstring *nextline = &curline;
-			
+
 			const qstring func_ctreeaddr = make_addr(lc.func_ctidx);
 			const qstring farg_ctreeaddr = make_addr(lc.farg_ctidx);
 			const qstring funcexpr_ctreeaddr = make_addr(lc.funcexpr_ctidx);
-			
+
 			// points to address tag of call expression beginning
 			size_t funcexpr_start = curline.find(funcexpr_ctreeaddr);
 			// points to address tag of function
@@ -226,19 +226,19 @@ static int callback(cfunc_t *func) {
 			// points to address tag of final component of first argument
 			// NOTE: points to nl if is_multiline
 			size_t farg_start = curline.find(farg_ctreeaddr);
-			
+
 			bool is_multiline = false;
-			
+
 			/* in all cases, it is mandatory for funcexpr & func to be on one line */
 			if (funcexpr_start == qstring::npos || func_start == qstring::npos)
 				continue;
-			
+
 			/* farg on the other hand can be on the next line as part of a multi line printed funcexpr */
 			if (farg_start == qstring::npos) {
 				/* but if we're out of lines to look in, exit */
 				if (lineidx - 1 > func->sv.size() + 1)
 					break;
-				
+
 				/* otherwise farg_start points to lineidx + 1 (!) */
 				nextline = &func->sv[lineidx + 1].line;
 				farg_start = nextline->find(farg_ctreeaddr);
@@ -247,9 +247,9 @@ static int callback(cfunc_t *func) {
 					//msg("found multiline funcexpr\n");
 				}
 			}
-			
+
 		// -- begin area that doesn't care about multiline --
-			
+
 			// points to color start tag of function
 			size_t funcname_begin_color_tag = func_start + func_ctreeaddr.length();
 			// points to start of function name
@@ -259,31 +259,31 @@ static int callback(cfunc_t *func) {
 			// full function name, should be namespaces::class::function
 			qstring full_funcname = curline.substr(funcname_start, funcname_end);
 			qstring post_part;
-			
+
 			// detect function templates, currently only nmsp::cls::func<...>(...) is supported, to reformat into func<...>(...)
 			size_t anglebracket_begin = full_funcname.find("<");
 			if (anglebracket_begin != qstring::npos) {
 				post_part = full_funcname.substr(anglebracket_begin);
 				full_funcname.remove(anglebracket_begin, full_funcname.length() - anglebracket_begin + 1);
 			}
-			
+
 			qvector<qstring> splits;
 			full_funcname.split(&splits, "::");
-			
+
 			// function part of namespaces::class::function
 			qstring actual_funcname = full_funcname;
-			
+
 			if (splits.size() >= 2) {
 				actual_funcname = splits[splits.size() - 1];
 			} else {
 				// function name is not in the expected format, we exit
 				break;
 			}
-			
+
 			// get the namespaces::class part
 			splits.pop_back();
 			qstring wanted_farg_type = qstring::join(splits, "::");
-			
+
 			tinfo_t actual_farg_type = lc.first_arg->type;
 			if (actual_farg_type.is_ptr()) {
 				ptr_type_data_t ptrtypedata;
@@ -294,10 +294,10 @@ static int callback(cfunc_t *func) {
 				}
 				actual_farg_type = ptrtypedata.obj_type;
 			}
-			
+
 			qstring actual_farg_type_str;
 			actual_farg_type.print(&actual_farg_type_str);
-			
+
 			// it is possible that the pointer type we're passing (aka actual_farg_type)
 			// is a derivative class of the wanted class.
 			// meaning we need to know what base classes there are for it
@@ -317,7 +317,7 @@ static int callback(cfunc_t *func) {
 								farg_type_is_matching_derivative = true;
 								break;
 							}
-							
+
 							udt_type_data_t inner_typedata;
 							udt.type.get_udt_details(&inner_typedata);
 							if (inner_typedata.size() && inner_typedata[0].is_baseclass()) {
@@ -327,7 +327,7 @@ static int callback(cfunc_t *func) {
 							}
 						}
 					}
-					
+
 					if (!has_inner) {
 						break;
 					} else {
@@ -335,15 +335,15 @@ static int callback(cfunc_t *func) {
 					}
 				}
 			}
-			
+
 			if (actual_farg_type_str != wanted_farg_type && !farg_type_is_matching_derivative) {
 				// type matches neither directly nor indirectly (through a baseclass).
 				// we exit.
 				break;
 			}
-			
+
 			actual_funcname += post_part;
-					
+
 		// -- end area that doesn't care about multiline --
 
 			if (!is_multiline) {
@@ -355,17 +355,17 @@ static int callback(cfunc_t *func) {
 				// for multiline, we can just find the first addr tag
 				farg_start = nextline->find(make_addrtag()) - 1;
 			}
-			
+
 			qstring& farg_line = is_multiline ? *nextline : curline;
 
 			// contains the (type) part of (type)var, and a deref operator (*) if applicable
 			qstring prefix_expr = "";
-			
+
 			// contains a [0] for cases where a function is called on the first element of an array
 			qstring suffix_expr = "";
-			
+
 			bool force_obj = false;
-			
+
 			if (lc.first_arg->op == cot_ptr) { // *x
 				ptr_type_data_t deref_type;
 				lc.first_arg->type.get_ptr_details(&deref_type);
@@ -377,24 +377,27 @@ static int callback(cfunc_t *func) {
 					info("%08X: could not decode pointer deref expression\n", lc.call->ea);
 					break;
 				}
-				
+
 				prefix_expr += farg_line.substr(farg_start, farg_start + deref_part.length());
 				farg_start += deref_part.length();
 				lc.first_arg = lc.first_arg->x;
 			}
-			
+
 			// if farg is a cast, we need to undo the cast, and grab the cast expression
 			if (lc.first_arg->op == cot_cast) {
 				skip_cast(farg_line, farg_start, prefix_expr);
 			}
-			
+
 			// NOTE: not for multiline
 			qstring arg_sep = "";
 			// NOTE: not for multiline
 			size_t post_farg = 0;
-			
+
 			size_t farg_end = 0;
-			
+
+			const qstring paren_begin = make_ctag_str(COLOR_SYMBOL, "(");
+			const qstring paren_end = make_ctag_str(COLOR_SYMBOL, ")");
+
 			if (!is_multiline) {
 				// for single-line calls, the end of farg is either:
 				// - the comma for the next arg; OR
@@ -405,21 +408,18 @@ static int callback(cfunc_t *func) {
 						make_ctag_str(COLOR_SYMBOL, ",") + " " /* look for ", " when there is at least a second arg */
 						:
 						make_ctag_str(COLOR_SYMBOL, ")") /* otherwise just look for the ending parenthesis */;
-	
+
 				farg_end = farg_line.find(arg_sep, farg_start);
-				
+
 				// we have additional parenthesis at the beginning of farg, in cases like when farg is complex
 				// enough to require the parentheses, e.g. (x + 4).Something();
 				// mostly occurs in cases of stack reuse and/or weird casts
 
-				const qstring paren_begin = make_ctag_str(COLOR_SYMBOL, "(");
-				const qstring paren_end = make_ctag_str(COLOR_SYMBOL, ")");
 
 				if (farg_line.find(paren_begin, farg_start) == farg_start) {
 					bool ok = true;
 					size_t paren_find_fargtmp_idx = farg_start;
-					
-					bool next_is_cast = false;
+
 					while (1) {
 						// cast parenthesis   = addr tag (cot_cast) + "("
 						// normal parenthesis = just "(" without anything in front
@@ -427,7 +427,7 @@ static int callback(cfunc_t *func) {
 							paren_find_fargtmp_idx += paren_begin.length();
 							continue;
 						}
-					
+
 						if (farg_line.find(make_addrtag(), paren_find_fargtmp_idx) == paren_find_fargtmp_idx && farg_line.find(paren_begin, paren_find_fargtmp_idx + addrtag_len()) == paren_find_fargtmp_idx + addrtag_len()) {
 							qstring addr = farg_line.substr(paren_find_fargtmp_idx + 2, paren_find_fargtmp_idx + addrtag_len());
 							size_t ctree_idx { 0 };
@@ -446,7 +446,7 @@ static int callback(cfunc_t *func) {
 							}
 							continue;
 						}
-						
+
 						// if we end up here, we found neither a normal nor cast parenthesis
 						// paren_find_fargtmp_idx points to the innermost char after all possible parens
 						// e.g. for `((int)X` it would point to X
@@ -458,7 +458,7 @@ static int callback(cfunc_t *func) {
 						break;
 					}
 				}
-				
+
 				if (!lc.second_arg && farg_line.find("ADJ", farg_start) != qstring::npos) {
 					// because ADJ has its own closing parenthesis,
 					// we need to skip that to find the ending parenthesis
@@ -472,67 +472,85 @@ static int callback(cfunc_t *func) {
 			}
 
 			qstring farg = farg_line.substr(farg_start, farg_end);
-			
+
 			if (is_multiline) {
 				// NOTE: we need to remove the last comma since farg would include that here
 				const qstring comma = make_ctag_str(COLOR_SYMBOL, ",") + make_addrtag();
 				size_t comma_idx = farg.find(comma);
 				farg.remove(comma_idx, comma_idx + comma_idx + comma.length() - 2);
 			}
-			
+
 		// -- begin area that doesn't care about multiline 2 --
-			
+
 			const qstring pointer_and_part    = make_ctag_str(COLOR_SYMBOL, "&");
 			const qstring farg_removable_part = farg_ctreeaddr + pointer_and_part;
-				
+			bool force_farg_parens = false;
+
 			if (!force_obj) {
-				// `this` is in the format &expr
-				if (lc.first_arg->op == cot_obj) {
-					tinfo_t obj_type;
-					get_tinfo(&obj_type, lc.first_arg->obj_ea);
-					if (obj_type.is_array()) {
-						array_type_data_t array_tdata;
-						obj_type.get_array_details(&array_tdata);
-						force_obj = !array_tdata.elem_type.is_ptr();
-						suffix_expr += make_ctag_str(COLOR_SYMBOL, "[") + make_ctag_str(COLOR_KEYWORD, "0") + make_ctag_str(COLOR_SYMBOL, "]");
+				//msg("%08X: %d\n", lc.call->ea, lc.first_arg->op);
+				switch (lc.first_arg->op) {
+				case cot_add:
+				case cot_sub:
+					{
+						// suppose the case when v5 is of type Obj *
+						// but the farg is "v5 + 5", it would reformat as v5 + 5->func();
+						// in most cases the cast expr would take over and force parentheses
+						// but here, we need to do it manually
+						force_farg_parens = true;
 					}
-				}
-				else if (lc.first_arg->op == cot_ref) {
-					// the expr part of &expr
-					cexpr_t *referenced_farg = lc.first_arg->x;
-					int referenced_cart_ctindex = func->treeitems.index(referenced_farg);
-						
-					if (referenced_cart_ctindex != -1) {
-						const qstring force_obj_cond = 
-							farg_removable_part +
-							make_addr(referenced_cart_ctindex);
-							
-						// if it actually references the expr, it's not a pointer
-						// force it to be treated as such
-						force_obj = farg.find(force_obj_cond) != qstring::npos;
+					break;
+				case cot_obj:
+					{
+						tinfo_t obj_type;
+						get_tinfo(&obj_type, lc.first_arg->obj_ea);
+						if (obj_type.is_array()) {
+							array_type_data_t array_tdata;
+							obj_type.get_array_details(&array_tdata);
+							force_obj = !array_tdata.elem_type.is_ptr();
+							suffix_expr += make_ctag_str(COLOR_SYMBOL, "[") + make_ctag_str(COLOR_KEYWORD, "0") + make_ctag_str(COLOR_SYMBOL, "]");
+						}
 					}
-					
-					if (referenced_farg->op == cot_memptr) {
-						force_obj = true;
-					}					
-					
-					if (referenced_farg->op == cot_memref) {
-						force_obj = true;
-					}					
-					
-					if (referenced_farg->op == cot_idx) {
-						force_obj = true;
-					}					
-					
-					if (force_obj) {
-						// if we treat it as not a pointer, we need
-						// to remove the & part of &expr
-						// so that we use expr.Function(...) instead of &expr.Function()
-						farg = farg.substr(farg_removable_part.length());
+					break;
+				case cot_ref:
+					{
+						// the expr part of &expr
+						cexpr_t *referenced_farg = lc.first_arg->x;
+						int referenced_cart_ctindex = func->treeitems.index(referenced_farg);
+
+						if (referenced_cart_ctindex != -1) {
+							const qstring force_obj_cond =
+								farg_removable_part +
+								make_addr(referenced_cart_ctindex);
+
+							// if it actually references the expr, it's not a pointer
+							// force it to be treated as such
+							force_obj = farg.find(force_obj_cond) != qstring::npos;
+						}
+
+						switch (referenced_farg->op)
+						{
+						case cot_memptr:
+						case cot_memref:
+						case cot_idx:
+							force_obj = true;
+							break;
+						default:
+							break;
+						}
+
+						if (force_obj) {
+							// if we treat it as not a pointer, we need
+							// to remove the & part of &expr
+							// so that we use expr.Function(...) instead of &expr.Function()
+							farg = farg.substr(farg_removable_part.length());
+						}
 					}
+					break;
+				default:
+					break;
 				}
 			}
-			
+
 			// determine which call operator to use depending on what the call item is
 			qstring call_operator = "";
 			if (!lc.first_arg->type.is_ptr() || force_obj) {
@@ -540,19 +558,19 @@ static int callback(cfunc_t *func) {
 			} else {
 				call_operator = make_ctag_str(COLOR_SYMBOL, "->");
 			}
-			
+
 		// -- end area that doesn't care about multiline 2 --
-		
+
 			qstring final_farg = prefix_expr + farg + suffix_expr;
-		    if (prefix_expr.length()) {
+		    if (prefix_expr.length() || force_farg_parens) {
 				final_farg = make_ctag_str(COLOR_SYMBOL, "(") + final_farg + make_ctag_str(COLOR_SYMBOL, ")");
 			}
-			
+
 			if (!is_multiline) {
 				qstring begin_until_func_start = curline.substr(0, func_start);
 				qstring post_farg_part = curline.substr(post_farg);
-				
-				curline = 
+
+				curline =
 					begin_until_func_start +
 					final_farg +
 					call_operator +
@@ -566,9 +584,15 @@ static int callback(cfunc_t *func) {
 				// before:          after:
 				// 1. func(         1. [deleted]   1 = curline
 				// 2.     farg      2. farg.func(  2 = nextline
-				
+
 				qstring begin_until_func = curline.substr(0, func_start); // indentation [    ]func(
-				
+
+				size_t num = 0;
+				for (size_t i = 0; i < final_farg.length(); i++, num++)
+					if (final_farg[i] != '\t') break;
+
+				if (num) final_farg.remove(0, num);
+
 				(*nextline) =
 					begin_until_func +
 					final_farg +
@@ -577,15 +601,15 @@ static int callback(cfunc_t *func) {
 					make_ctag_str(COLOR_DEMNAME, actual_funcname) +
 					make_ctag_str(COLOR_SYMBOL, "(") +
 					make_addr(lc.func_ctidx);
-					
+
 				func->sv.erase(&func->sv.at(lineidx));
-				
+
 				// iterating after this is NOT safe, exit
 				break;
 			}
 		}
 	}
-	
+
 	return 0;
 }
 
@@ -624,15 +648,15 @@ bool idaapi plugin_ctx_t::run(size_t)
 		install_cb();
 		return true;
 	}
-	
+
 	bool had_enabled = registered_cb;
 	if (registered_cb)
 		uninstall_cb();
 	else
 		install_cb();
-	
+
 	info("C++ Reformatter is now %s.", had_enabled ? "disabled" : "enabled");
-	
+
 	return true;
 }
 
